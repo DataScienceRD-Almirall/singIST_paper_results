@@ -1,1 +1,451 @@
+remotes::install_github("DataScienceRD-Almirall/singIST")
+# Visualizations
+library(singIST)
+library(ggplot2)
+library(scales)
+library(latex2exp)
+library(circlize)
+library(viridis)
+library(ggrepel)
+library(reshape2)
+library(ComplexHeatmap)
+library(dplyr)
+library(grid)
+library(tidyr)
 
+# Load superpathway.fit.model object
+load('C:/Users/amoruno/OneDrive - Almirall S.A/Doctorat/Publication 2/data/superpathway_fit.RData')
+# Load recapitulations
+load("C:/Users/amoruno/OneDrive - Almirall S.A/Doctorat/Publication 2/data/recapitulations_all.RData")
+
+pathway_name <- c("Cytokine-Cytokine receptor interaction [KEGG]", "Chemokine receptors bind chemokines [REACTOME]", "Chemokine signaling pathway [KEGG]", "Inflammation pathway [BIOCARTA]",  "Th1/Th2 Differentiation [BIOCARTA]", "Cytokine Network [BIOCARTA]", 
+                  "Dendritic cells in Th1/Th2 Development [BIOCARTA]", "JAK-STAT signaling pathway [KEGG]", "Asthma [KEGG]", "Toll-like receptor signaling pathway [KEGG]",
+                  "IL12 signaling mediated by STAT4 [PID]", "CD40/CD40L signaling [PID]",
+                  "IL4-mediated signaling events [PID]", "IL23-mediated signaling events [PID]",
+                  "CXCR3-mediated signaling events [PID]", "Hematopoietic cell lineage [KEGG]",
+                  "IL2 signaling events mediated by STAT5 [PID]", "NOD-like receptor signaling pathway [PID]",
+                  "Downstream signaling in naïve CD8+ T cells [PID]", "Signaling by Interleukins [REACTOME]",
+                  "T cell receptor signaling pathway [KEGG]", "Cytokine signaling in Immune system [REACTOME]")
+
+# Pathways to be analyzed according to Brunner et.al 2017
+pathways <- c("KEGG_CYTOKINE_CYTOKINE_RECEPTOR_INTERACTION", "REACTOME_CHEMOKINE_RECEPTORS_BIND_CHEMOKINES", "KEGG_CHEMOKINE_SIGNALING_PATHWAY",
+              "BIOCARTA_INFLAM_PATHWAY", "BIOCARTA_TH1TH2_PATHWAY", "BIOCARTA_CYTOKINE_PATHWAY",
+              "BIOCARTA_DC_PATHWAY", "KEGG_JAK_STAT_SIGNALING_PATHWAY", "KEGG_ASTHMA", "KEGG_TOLL_LIKE_RECEPTOR_SIGNALING_PATHWAY", "PID_IL12_STAT4_PATHWAY",
+              "BIOCARTA_CD40_PATHWAY", "PID_IL4_2PATHWAY", "PID_IL23_PATHWAY", "PID_CXCR3_PATHWAY",
+              "KEGG_HEMATOPOIETIC_CELL_LINEAGE", "PID_IL2_STAT5_PATHWAY", "KEGG_NOD_LIKE_RECEPTOR_SIGNALING_PATHWAY", "PID_CD8_TCR_DOWNSTREAM_PATHWAY", "REACTOME_SIGNALING_BY_INTERLEUKINS",
+              "KEGG_T_CELL_RECEPTOR_SIGNALING_PATHWAY",
+              "REACTOME_CYTOKINE_SIGNALING_IN_IMMUNE_SYSTEM"
+              # ARCHIVED: Archived Founder gene sets that are referenced by current Hallmarks
+              # This pathway is not included in analysis since it has been archived by msigdb and no longer updated nor curated
+              # "REACTOME_IMMUNE_SYSTEM"
+)
+df_pathway_name <- data.frame("pathway" = pathways, "pathway_name" = pathway_name)
+
+# Compute number of statistically significant genes for each cell type
+GIP_significant <- data.frame("pathway" = c(), "celltype" = c(), "number_significant" = c())
+results_GIP_significant <- lapply(seq_along(superpathway_fit), function(j, store = GIP_significant){
+    cells <- superpathway_fit[[j]]@superpathway_input@superpathway_info@celltypes
+    for(i in seq(1, length(cells))){
+        significant <- sum(superpathway_fit[[j]]@model_validation$adjpvalue_GIP_significance[[i]]$adj_p_val <= 0.05)
+        GIP_significant <- rbind(GIP_significant, data.frame("pathway" = c(names(superpathway_fit)[j]), "celltype" = c(cells[i]), "number_significant" = c(significant)))
+    }
+    return(GIP_significant)
+})
+
+# Add full pathway name 
+all_superpathway <- merge(recapitulations_all$superpathwa, df_pathway_name, by = "pathway")
+all_celltypes <- merge(recapitulations_all$celltype, df_pathway_name, by = "pathway")
+all_genes <- merge(recapitulations_all$gene, df_pathway_name, by = "pathway")
+# Order by pvalues
+all_superpathway <- all_superpathway[order(all_superpathway$p_val, decreasing = FALSE), ]
+all_fc <- merge(recapitulations_all$FC, df_pathway_name, by = "pathway")
+
+# Use a common theme for graphics
+theme_heat <- theme_bw() +
+    theme(axis.text.y = element_text(angle = 0, hjust = 1, size = 11),
+          axis.text.x = element_text(angle = 45, hjust = 1, size = 8))
+# Orthology statistics of disease model organisms
+all_celltypes_orthology <- unique(all_celltypes[, c("pathway_name", "orthology", "target_organism")])
+# Add pvalue and order
+all_celltypes_orthology <- merge(all_celltypes_orthology, all_superpathway[, c("pathway_name", "p_val")], by = "pathway_name")
+all_celltypes_orthology <- all_celltypes_orthology[order(all_celltypes_orthology$p_val, decreasing = FALSE), ]
+
+# Plot orthology coverage
+plot_orthology <- ggplot(data = all_celltypes_orthology[all_celltypes_orthology$pathway_name %in% c("Chemokine receptors bind chemokines [REACTOME]",
+                                                                                                    "Cytokine-Cytokine receptor interaction [KEGG]",
+                                                                                                    "Dendritic cells in Th1/Th2 Development [BIOCARTA]",
+                                                                                                    "JAK-STAT signaling pathway [KEGG]"),], aes(fill = target_organism, x = pathway_name, y = orthology/100)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
+    scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.05), labels = scales::percent) +
+    scale_fill_brewer(palette = "Paired") +
+    labs(x = "", 
+         y = "Observed one-to-one orthology coverage", #title = "Pathway orthology coverage by disease model",
+         fill = "Disease model", tag = "B") +
+    theme_heat +
+    coord_flip()
+
+plot_superpathway <- ggplot(all_superpathway[all_superpathway$pathway_name %in% c("Chemokine receptors bind chemokines [REACTOME]",
+                                                                 "Cytokine-Cytokine receptor interaction [KEGG]",
+                                                                 "Dendritic cells in Th1/Th2 Development [BIOCARTA]",
+                                                                 "JAK-STAT signaling pathway [KEGG]"),], aes(x = target_organism, y = pathway_name)) +
+    geom_tile(aes(fill = recapitulation), color = "white") +
+    theme_heat + 
+    scale_fill_gradient2(low = "blue", mid = "white", high = "green", midpoint = 0, limits=c(-200,200)) +
+    geom_text(aes(label = paste0(round(recapitulation, 1), "%")), 
+              color = "black") +
+    labs(x = "Disease Model", y = "Pathway name", #title = "Superpathway observed recapitulation",
+         #subtitle = "Atopic Dermatitis disease models",
+         fill = latex2exp::TeX("$\\widehat{\\Omega} f_{AD}$"), tag = "A") +
+    theme(plot.title = element_text(face = "bold")) +
+    theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
+    theme(plot.caption = element_text(color = "grey68"))
+
+plot_superpathway + plot_orthology
+
+
+# Cell type recapitulations
+# Make custom theme
+theme_heat <- theme_bw() +
+    theme(axis.line = element_blank(),
+          axis.ticks = element_blank(),
+          strip.text = element_text(size=12),
+          axis.text.x = element_text(angle = -65, hjust = 0, size = 12),
+          axis.text.y = element_text(size = 12))
+# Default 40 character target width.
+swr = function(string, nwrap=40) {
+    paste(strwrap(string, width=nwrap), collapse="\n")
+}
+swr = Vectorize(swr)
+# Create line breaks in Pathway name
+all_celltypes$pathway_name = swr(all_celltypes$pathway_name)
+# Plot for each pathway, cell type and disease model
+plot_celltype <- ggplot(all_celltypes[all_celltypes$pathway_name %in% c("Chemokine receptors bind chemokines\n[REACTOME]",
+                                                          "Cytokine-Cytokine receptor interaction\n[KEGG]",
+                                                          "Dendritic cells in Th1/Th2 Development\n[BIOCARTA]",
+                                                          "JAK-STAT signaling pathway [KEGG]"),], aes(x = target_organism, y = celltype)) +
+    geom_tile(aes(fill = recapitulation), color = "white") +
+    facet_wrap(~pathway_name, scales = "free") + theme_heat +
+    scale_fill_gradient2(low = "blue", mid = "white", high = "green",  midpoint = 0, limits=c(-200, 200)) + 
+    geom_text(aes(label = paste0(round(recapitulation, 1), "%")), color = "black", size = 5) +
+    labs(x = "Disease model", y= "Cell type", fill = latex2exp::TeX("$\\widehat{\\Gamma} f_{AD}^b$")) +
+    theme(plot.title = element_text(face = "bold")) +
+    theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
+    theme(plot.caption = element_text(color = "grey68"))
+
+plot_celltype
+
+# Description: function to select top N genes within each cell type and ensure common genes across all cell types
+select_top_genes <- function(data, top_n = 10) {
+    # Initialize an empty data frame to store results
+    top_genes <- data.frame()
+    # Filter out other pathways
+    # List to store top genes from each cell type
+    top_gene_list <- list()
+    
+    # Loop over each cell type
+    for (cell_type in unique(data$celltype)) {
+        # Filter data for the current cell type
+        cell_data <- data %>% filter(celltype == cell_type)
+        
+        # Select top N genes based on the absolute value of Gene_contribution
+        top_cell_genes <- cell_data %>%
+            arrange(desc(abs(contribution))) %>%
+            head(top_n)
+        
+        # Append the selected genes to the list
+        top_gene_list[[cell_type]] <- top_cell_genes$gene
+        
+        # Append the selected genes to the result
+        top_genes <- bind_rows(top_genes, top_cell_genes)
+    }
+    
+    # Get a unique list of top genes across all cell types
+    unique_top_genes <- unique(unlist(top_gene_list))
+    
+    # Filter the original data to include only the top genes
+    final_top_genes <- data %>% filter(gene %in% unique_top_genes)
+    
+    # Ensure that all top genes are present for each cell type by joining the missing genes
+    final_result <- data.frame()
+    for (cell_type in unique(data$celltype)) {
+        cell_data <- final_top_genes %>% filter(celltype == cell_type)
+        missing_genes <- setdiff(unique_top_genes, cell_data$gene)
+        if (length(missing_genes) > 0) {
+            missing_data <- data %>%
+                filter(gene %in% missing_genes, celltype == cell_type) %>%
+                arrange(desc(abs(contribution)))
+            cell_data <- bind_rows(cell_data, missing_data)
+        }
+        final_result <- bind_rows(final_result, cell_data)
+    }
+    
+    return(final_result)
+}
+
+# Description: create complexheatmap to plot gene contribution to cell type recapitulation     for each disease model and pathway
+heatmap_gene <- function(df, value_size = 5, gene_size = 8, height = NULL, width = NULL){
+    df$Sample <- paste0(df$target_organism, "_", df$celltype)
+    df_ordered <- df[order(df$target_organism, df$celltype, df$gene), ]
+    df_2 <- df_ordered[, colnames(df_ordered) %in% c("Sample", "contribution", "gene")]
+    df_2$contribution <- df_2$contribution
+    # Pivot to wider format
+    df_wide <- df_2 %>%
+        pivot_wider(names_from = Sample, values_from = contribution)
+    # Transpose the dataframe
+    df_transposed <- as.data.frame(df_wide)
+    genes <- df_transposed$gene
+    df_transposed$gene <- NULL
+    df_transposed <- as.matrix(df_transposed)
+    rownames(df_transposed) <- genes
+    # Metadata
+    clusters <- rep(c("Dendritic Cells", "Keratinocytes", "Langerhans Cells", "Melanocytes", "T-cell"), times = 3)
+    stimulation <- rep(c("IMQ", "OVA", "OXA"), each = 5)
+    
+    # Annotation object
+    ha_col <- HeatmapAnnotation(
+        "Cell type" = clusters,
+        "Disease model" = stimulation,
+        col = list("Cell type" = c("Dendritic Cells" = "#1f77b4", "Keratinocytes" = "#ff7f0e", "Langerhans Cells" = "#2ca02c", "Melanocytes" =  "#17becf", "T-cell" = "#d62728"),
+                                      "Disease model" = c("IMQ" = "#9467bd", "OVA" = "#8c564b", "OXA" = "#e377c2")
+                   ),
+        annotation_name_gp = gpar(fontsize = 0),  # Change the font size of the annotation labels
+        annotation_legend_param = list(
+            "Cell type" = list(title_gp = gpar(fontsize = 8, fontface = 2), labels_gp = gpar(fontsize = 8)),
+            "Disease model" = list(title_gp = gpar(fontsize = 8, fontface = 2), labels_gp = gpar(fontsize = 8))
+        )
+    )
+    
+    # Updated cell_fun function
+    cell_fun <- function(j, i, x, y, width, height, fill) {
+        if(abs(df_transposed[i,j]) > .Machine$double.eps){
+            grid.text(sprintf("%.1f", df_transposed[i,j]), x, y, 
+                      gp = gpar(fontsize = value_size))
+            
+        }
+    }
+    
+    # Create heatmap
+    ht <- Heatmap(df_transposed, top_annotation = ha_col, cluster_rows = FALSE, cluster_columns = FALSE,
+                  height = height, width = width, column_title = "A",          
+                  column_title_gp = gpar(fontsize = 12, fontface = "bold"),  # Customize title appearance
+                  show_column_names = FALSE, row_names_gp = gpar(fontsize = gene_size, fontface = 2),
+                  col = colorRamp2(c(-100, 0, 100), c("#1f77b4", "#ffffff", "#d62728")),   
+                  heatmap_legend_param = list(title = expression(hat(Delta)*f["g,k_1"]^b), title_gp = gpar(fontface = 2)),
+                  cell_fun = cell_fun
+                  #layer_fun = function(j, i, x, y, width, height, fill) {
+                  # since grid.text can also be vectorized
+                  #  grid.text(sprintf("%.1f", pindex(df_transposed, i, j)), x, y, 
+                  #            gp = gpar(fontsize = value_size))
+                  #  }
+    )
+    return(ht)
+}
+
+
+# Description: plot FC for each gene, cell type, disease model and pathway
+heatmap_FC <- function(df, df_gene, value_size = 5, gene_size = 8, height = NULL, width = NULL){
+    # Add orthology and all genes in df_gene
+    df <- left_join(df_gene, df, by = c("gene", "target_organism", "celltype"))
+    # If gene is ortholog but not significant then its FC might be NA because FindMarkers might not
+    # have returned that gene, in such case set to 0
+    df$`r_g^b` <- ifelse(is.na(df$`r_g^b`) & df$orthology == 1, 0, df$`r_g^b`)
+    # Use `orthology` variable to tag fold changes that are significant according to its adj pvalue
+    aux <- df$`orthology`
+    aux <- ifelse(!is.na(df$`p_val_adj`) & df$`p_val_adj` <= 0.05, 2, aux)
+    df$`orthology` <- aux
+    df$Sample <- paste0(df$target_organism, "_", df$celltype)
+    df_ordered <- df[order(df$target_organism, df$celltype, df$gene), ]
+    df_2 <- df_ordered[ , colnames(df_ordered) %in% c("Sample", "r_g^b", "gene")]
+    df_2$`r_g^b` <- df_2$`r_g^b`
+    # Pivot to wider format
+    df_wide <- df_2 %>%
+        pivot_wider(names_from = Sample, values_from = `r_g^b`)
+    # Transpose the dataframe
+    df_transposed <- as.data.frame(df_wide)
+    genes <- df_transposed$gene
+    df_transposed$gene <- NULL
+    df_transposed <- as.matrix(df_transposed)
+    rownames(df_transposed) <- genes
+    # Metadata
+    times <- length(unique(df$target_organism))
+    clusters <- rep(unique(df$celltype), times = times)
+    stimulation <- rep(unique(df$target_organism), each = length(unique(df$celltype)))
+    
+    # Function to create cell borders and remove "NaN" text
+    # Matrix with in silico sum values
+    # Pivot to wider format
+    df_2 <- df_ordered[, colnames(df_ordered) %in% c("Sample", "orthology", "gene")]
+    border_df <- df_2 %>%
+        pivot_wider(names_from = Sample, values_from = orthology)
+    # Transpose the dataframe
+    border_matrix <- as.data.frame(border_df)
+    genes <- border_matrix$gene
+    border_matrix$gene <- NULL
+    border_matrix <- as.matrix(border_matrix)
+    rownames(border_matrix) <- genes
+    
+    # Create matrix to check if the row should be grey for each disease model
+    models <- unique(df_ordered$target_organism)
+    is_row_black_per_disease <- apply(border_matrix, 2,
+                                      function(column, model = models)
+                                          border_matrix[, sapply(colnames(border_matrix), function(x) sub("_.*", "", x)) %in% model] == 0)
+    
+    # Updated cell_fun function
+    cell_fun <- function(j, i, x, y, width, height, fill) {
+        disease_model <- sub("_.*", "", colnames(df_transposed)[j])
+        if (any(border_matrix[i, grep(disease_model, colnames(border_matrix))] == 0, na.rm = TRUE)) {
+            grid.rect(x, y, width, height, gp = gpar(fill = "grey", col = "grey"))
+        } else if (is.na(df_transposed[i, j])) {
+            grid.rect(x, y, width, height, gp = gpar(fill = "grey", col = "grey"))
+        } else if (border_matrix[i, j] == 2) {
+            grid.rect(x, y, width, height, gp = gpar(col = "black", fill = NA, lwd = 1))
+        }
+        # Only show text value for non-zero FC
+        if(abs(df_transposed[i,j]) > .Machine$double.eps && !is.na(df_transposed[i,j])){
+            grid.text(sprintf("%.1f", df_transposed[i,j]), x, y, 
+                      gp = gpar(fontsize = value_size))
+            
+        }
+    }
+    
+    # Annotation object
+    # Cell type and disease model
+    clusters <- rep(c("Dendritic Cells", "Keratinocytes", "Langerhans Cells", "Melanocytes", "T-cell"), times = 3)
+    stimulation <- rep(c("IMQ", "OVA", "OXA"), each = 5)
+    
+    ha_col <- HeatmapAnnotation(
+        "Cell type" = clusters,
+        "Disease model" = stimulation,
+        col = list("Cell type" = c("Dendritic Cells" = "#1f77b4", "Keratinocytes" = "#ff7f0e", "Langerhans Cells" = "#2ca02c", "Melanocytes" =  "#17becf", "T-cell" = "#d62728"),
+                   "Disease model" = c("IMQ" = "#9467bd", "OVA" = "#8c564b", "OXA" = "#e377c2")
+        ),
+        annotation_name_gp = gpar(fontsize = 8),  # Change the font size of the annotation labels
+        annotation_legend_param = list(
+            "Cell type" = list(title_gp = gpar(fontsize = 8, fontface = 2), labels_gp = gpar(fontsize = 8)),
+            "Disease model" = list(title_gp = gpar(fontsize = 8, fontface = 2), labels_gp = gpar(fontsize = 8))
+        )
+    )
+    
+    # Custom color function
+    color_function <- function(x){
+        colors <- colorRamp2(c(-100, 0, 100), c("#1f77b4", "#ffffff", "#d62728"))
+        col <- colors(x)
+        col[is.na(x)] <- "grey"
+        return(col)
+    }
+    
+    # Create heatmap
+    ht <- Heatmap(df_transposed, top_annotation = ha_col, cluster_rows = FALSE, cluster_columns = FALSE,
+                  height = height, width = width, column_title = "B",            
+                  column_title_gp = gpar(fontsize = 12, fontface = "bold"),  # Customize title appearance
+                  show_column_names = FALSE, row_names_gp = gpar(fontsize = gene_size, fontface = 2),
+                  col = color_function,   
+                  cell_fun = cell_fun,
+                  heatmap_legend_param = list(title = expression(r[tilde(g)]^{b}), title_gp = gpar(fontface = 2))
+                  #layer_fun = function(j, i, x, y, width, height, fill) {
+                  # since grid.text can also be vectorized
+                  #  grid.text(sprintf("%.1f", pindex(df_transposed, i, j)), x, y, 
+                  #            gp = gpar(fontsize = value_size))
+                  #}
+    )
+    return(ht)
+}
+
+
+# Gene contributions and fold changes plot for superpathways of dicussion
+# Add a custom legend for NaN values
+lgd <- Legend(
+    labels = "Not ortholog",
+    legend_gp = gpar(fill = "grey"),
+    title = "Orthology status"
+)
+# Define the legend for black borders
+border_legend <- Legend(
+    labels = c(expression("FDR <= 0.05")),
+    title = "FC significance",
+    type = "lines",
+    legend_gp = gpar(col = "black", fill = NA, lwd = 2),
+    nrow = 1, by_row = TRUE, labels_gp = gpar(fontsize = 8)
+)
+
+# We don't select top genes for DC as its gene set is < 20 genes
+dc_gene_filtered <- all_genes %>%
+    filter(
+        pathway == "BIOCARTA_DC_PATHWAY"
+    )
+dc_fc_filtered <- all_fc %>%
+    filter(
+        pathway == "BIOCARTA_DC_PATHWAY"
+    )
+
+pathway_dc <- heatmap_gene(dc_gene_filtered, value_size = 5, gene_size = 6, height = 1000, width = 300)
+fc_dc <- heatmap_FC(dc_fc_filtered, dc_gene_filtered, value_size = 6, gene_size = 6,
+                   height = 1000, width = 300)
+draw(pathway_dc+fc_dc, 
+     show_heatmap_legend = FALSE, 
+     show_annotation_legend = FALSE,
+     #annotation_legend_list = list(lgd, border_legend), 
+     column_title = "Dendritic cells in Th1/Th2 Development [BIOCARTA]")
+
+# JAK-STAT SIGNALING PATHWAY
+jak_gene_filtered <- all_genes %>%
+    filter(
+        pathway == "KEGG_JAK_STAT_SIGNALING_PATHWAY"
+    )
+jak_fc_filtered <- all_fc %>%
+    filter(
+        pathway == "KEGG_JAK_STAT_SIGNALING_PATHWAY"
+    )
+
+selected_jak <- select_top_genes(jak_gene_filtered, top = 5)
+pathway_jak <- heatmap_gene(selected_jak, value_size = 5, gene_size = 6,
+                           height = 1000, width = 300)
+fc_jak <- heatmap_FC(jak_fc_filtered, selected_jak, value_size = 5, gene_size = 6,
+                    height = 1000, width = 300)
+draw(pathway_jak+fc_jak, 
+     show_heatmap_legend = FALSE, 
+     show_annotation_legend = FALSE,
+     #annotation_legend_list = list(lgd, border_legend), 
+     column_title = "JAK-STAT signaling pathway [KEGG]")
+
+# Cytokine-Cytokine receptor interaction
+cytokine_gene_filtered <- all_genes %>%
+    filter(
+        pathway == "KEGG_CYTOKINE_CYTOKINE_RECEPTOR_INTERACTION"
+    )
+cytokine_fc_filtered <- all_fc %>%
+    filter(
+        pathway == "KEGG_CYTOKINE_CYTOKINE_RECEPTOR_INTERACTION"
+    )
+
+selected_cytokine <- select_top_genes(cytokine_gene_filtered, top = 5)
+pathway_cytokine <- heatmap_gene(selected_cytokine, value_size = 5, gene_size = 6,
+                            height = 1000, width = 300)
+fc_cytokine <- heatmap_FC(cytokine_fc_filtered, selected_cytokine, value_size = 5, gene_size = 6,
+                     height = 1000, width = 300)
+draw(pathway_cytokine+fc_cytokine, 
+     show_heatmap_legend = FALSE, 
+     show_annotation_legend = FALSE,
+     #annotation_legend_list = list(lgd, border_legend), 
+     column_title = "Cytokine-Cytokine receptor interaction [KEGG]")
+
+# Chemokine receptor interaction
+chemokine_gene_filtered <- all_genes %>%
+    filter(
+        pathway == "REACTOME_CHEMOKINE_RECEPTORS_BIND_CHEMOKINES"
+    )
+chemokine_fc_filtered <- all_fc %>%
+    filter(
+        pathway == "REACTOME_CHEMOKINE_RECEPTORS_BIND_CHEMOKINES"
+    )
+
+selected_chemokine <- select_top_genes(chemokine_gene_filtered, top = 5)
+pathway_chemokine <- heatmap_gene(selected_chemokine, value_size = 5, gene_size = 6,
+                                 height = 1000, width = 300)
+fc_chemokine <- heatmap_FC(chemokine_fc_filtered, selected_chemokine, value_size = 5, gene_size = 6,
+                            height = 1000, width = 300)
+draw(pathway_chemokine+fc_chemokine, 
+     show_heatmap_legend = FALSE, 
+     show_annotation_legend = FALSE,
+     annotation_legend_list = list(lgd, border_legend), 
+     column_title = "Chemokine receptors bind chemokines [REACTOME]")
