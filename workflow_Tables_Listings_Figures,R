@@ -16,7 +16,7 @@ library(tidyr)
 # Load superpathway.fit.model object
 load('C:/Users/amoruno/OneDrive - Almirall S.A/Doctorat/Publication 2/data/superpathway_fit.RData')
 # Load recapitulations
-load("C:/Users/amoruno/OneDrive - Almirall S.A/Doctorat/Publication 2/data/recapitulations_all.RData")
+load("C:/Users/amoruno/OneDrive - Almirall S.A/Doctorat/Publication 2/data/recapitulations_all_AD.RData")
 
 pathway_name <- c("Cytokine-Cytokine receptor interaction [KEGG]", "Chemokine receptors bind chemokines [REACTOME]", "Chemokine signaling pathway [KEGG]", "Inflammation pathway [BIOCARTA]",  "Th1/Th2 Differentiation [BIOCARTA]", "Cytokine Network [BIOCARTA]", 
                   "Dendritic cells in Th1/Th2 Development [BIOCARTA]", "JAK-STAT signaling pathway [KEGG]", "Asthma [KEGG]", "Toll-like receptor signaling pathway [KEGG]",
@@ -85,9 +85,9 @@ plot_orthology <- ggplot(data = all_celltypes_orthology[all_celltypes_orthology$
     coord_flip()
 
 plot_superpathway <- ggplot(all_superpathway[all_superpathway$pathway_name %in% c("Chemokine receptors bind chemokines [REACTOME]",
-                                                                 "Cytokine-Cytokine receptor interaction [KEGG]",
-                                                                 "Dendritic cells in Th1/Th2 Development [BIOCARTA]",
-                                                                 "JAK-STAT signaling pathway [KEGG]"),], aes(x = target_organism, y = pathway_name)) +
+                                                                                  "Cytokine-Cytokine receptor interaction [KEGG]",
+                                                                                  "Dendritic cells in Th1/Th2 Development [BIOCARTA]",
+                                                                                  "JAK-STAT signaling pathway [KEGG]"),], aes(x = target_organism, y = pathway_name)) +
     geom_tile(aes(fill = recapitulation), color = "white") +
     theme_heat + 
     scale_fill_gradient2(low = "blue", mid = "white", high = "green", midpoint = 0, limits=c(-200,200)) +
@@ -95,7 +95,7 @@ plot_superpathway <- ggplot(all_superpathway[all_superpathway$pathway_name %in% 
               color = "black") +
     labs(x = "Disease Model", y = "Pathway name", #title = "Superpathway observed recapitulation",
          #subtitle = "Atopic Dermatitis disease models",
-         fill = latex2exp::TeX("$\\widehat{\\Omega} f_{AD}$"), tag = "A") +
+         fill = latex2exp::TeX("$\\widehat{\\Omega} f$"), tag = "A") +
     theme(plot.title = element_text(face = "bold")) +
     theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
     theme(plot.caption = element_text(color = "grey68"))
@@ -120,14 +120,14 @@ swr = Vectorize(swr)
 all_celltypes$pathway_name = swr(all_celltypes$pathway_name)
 # Plot for each pathway, cell type and disease model
 plot_celltype <- ggplot(all_celltypes[all_celltypes$pathway_name %in% c("Chemokine receptors bind chemokines\n[REACTOME]",
-                                                          "Cytokine-Cytokine receptor interaction\n[KEGG]",
-                                                          "Dendritic cells in Th1/Th2 Development\n[BIOCARTA]",
-                                                          "JAK-STAT signaling pathway [KEGG]"),], aes(x = target_organism, y = celltype)) +
+                                                                        "Cytokine-Cytokine receptor interaction\n[KEGG]",
+                                                                        "Dendritic cells in Th1/Th2 Development\n[BIOCARTA]",
+                                                                        "JAK-STAT signaling pathway [KEGG]"),], aes(x = target_organism, y = celltype)) +
     geom_tile(aes(fill = recapitulation), color = "white") +
     facet_wrap(~pathway_name, scales = "free") + theme_heat +
     scale_fill_gradient2(low = "blue", mid = "white", high = "green",  midpoint = 0, limits=c(-200, 200)) + 
     geom_text(aes(label = paste0(round(recapitulation, 1), "%")), color = "black", size = 5) +
-    labs(x = "Disease model", y= "Cell type", fill = latex2exp::TeX("$\\widehat{\\Gamma} f_{AD}^b$")) +
+    labs(x = "Disease model", y= "Cell type", fill = latex2exp::TeX("$\\widehat{\\Gamma} f^b$")) +
     theme(plot.title = element_text(face = "bold")) +
     theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
     theme(plot.caption = element_text(color = "grey68"))
@@ -206,8 +206,8 @@ heatmap_gene <- function(df, value_size = 5, gene_size = 8, height = NULL, width
         "Cell type" = clusters,
         "Disease model" = stimulation,
         col = list("Cell type" = c("Dendritic Cells" = "#1f77b4", "Keratinocytes" = "#ff7f0e", "Langerhans Cells" = "#2ca02c", "Melanocytes" =  "#17becf", "T-cell" = "#d62728"),
-                                      "Disease model" = c("IMQ" = "#9467bd", "OVA" = "#8c564b", "OXA" = "#e377c2")
-                   ),
+                   "Disease model" = c("IMQ" = "#9467bd", "OVA" = "#8c564b", "OXA" = "#e377c2")
+        ),
         annotation_name_gp = gpar(fontsize = 0),  # Change the font size of the annotation labels
         annotation_legend_param = list(
             "Cell type" = list(title_gp = gpar(fontsize = 8, fontface = 2), labels_gp = gpar(fontsize = 8)),
@@ -227,10 +227,10 @@ heatmap_gene <- function(df, value_size = 5, gene_size = 8, height = NULL, width
     # Create heatmap
     ht <- Heatmap(df_transposed, top_annotation = ha_col, cluster_rows = FALSE, cluster_columns = FALSE,
                   height = height, width = width, column_title = "A",          
-                  column_title_gp = gpar(fontsize = 12, fontface = "bold"),  # Customize title appearance
+                  column_title_gp = gpar(fontsize = 30, fontface = "bold"),  # Customize title appearance
                   show_column_names = FALSE, row_names_gp = gpar(fontsize = gene_size, fontface = 2),
                   col = colorRamp2(c(-100, 0, 100), c("#1f77b4", "#ffffff", "#d62728")),   
-                  heatmap_legend_param = list(title = expression(hat(Delta)*f["g,k_1"]^b), title_gp = gpar(fontface = 2)),
+                  heatmap_legend_param = list(title = expression(hat(Delta)*f["g"]^b), title_gp = gpar(fontface = 2)),
                   cell_fun = cell_fun
                   #layer_fun = function(j, i, x, y, width, height, fill) {
                   # since grid.text can also be vectorized
@@ -302,7 +302,7 @@ heatmap_FC <- function(df, df_gene, value_size = 5, gene_size = 8, height = NULL
         }
         # Only show text value for non-zero FC
         if(abs(df_transposed[i,j]) > .Machine$double.eps && !is.na(df_transposed[i,j])){
-            grid.text(sprintf("%.1f", df_transposed[i,j]), x, y, 
+            grid.text(sprintf("%.2f", df_transposed[i,j]), x, y, 
                       gp = gpar(fontsize = value_size))
             
         }
@@ -319,16 +319,16 @@ heatmap_FC <- function(df, df_gene, value_size = 5, gene_size = 8, height = NULL
         col = list("Cell type" = c("Dendritic Cells" = "#1f77b4", "Keratinocytes" = "#ff7f0e", "Langerhans Cells" = "#2ca02c", "Melanocytes" =  "#17becf", "T-cell" = "#d62728"),
                    "Disease model" = c("IMQ" = "#9467bd", "OVA" = "#8c564b", "OXA" = "#e377c2")
         ),
-        annotation_name_gp = gpar(fontsize = 8),  # Change the font size of the annotation labels
+        annotation_name_gp = gpar(fontsize = 18),  # Change the font size of the annotation labels
         annotation_legend_param = list(
-            "Cell type" = list(title_gp = gpar(fontsize = 8, fontface = 2), labels_gp = gpar(fontsize = 8)),
-            "Disease model" = list(title_gp = gpar(fontsize = 8, fontface = 2), labels_gp = gpar(fontsize = 8))
+            "Cell type" = list(title_gp = gpar(fontsize = 18, fontface = 2), labels_gp = gpar(fontsize = 18)),
+            "Disease model" = list(title_gp = gpar(fontsize = 18, fontface = 2), labels_gp = gpar(fontsize = 18))
         )
     )
     
     # Custom color function
     color_function <- function(x){
-        colors <- colorRamp2(c(-100, 0, 100), c("#1f77b4", "#ffffff", "#d62728"))
+        colors <- colorRamp2(c(-1, 0, 1), c("#1f77b4", "#ffffff", "#d62728"))
         col <- colors(x)
         col[is.na(x)] <- "grey"
         return(col)
@@ -337,7 +337,7 @@ heatmap_FC <- function(df, df_gene, value_size = 5, gene_size = 8, height = NULL
     # Create heatmap
     ht <- Heatmap(df_transposed, top_annotation = ha_col, cluster_rows = FALSE, cluster_columns = FALSE,
                   height = height, width = width, column_title = "B",            
-                  column_title_gp = gpar(fontsize = 12, fontface = "bold"),  # Customize title appearance
+                  column_title_gp = gpar(fontsize = 30, fontface = "bold"),  # Customize title appearance
                   show_column_names = FALSE, row_names_gp = gpar(fontsize = gene_size, fontface = 2),
                   col = color_function,   
                   cell_fun = cell_fun,
@@ -362,7 +362,7 @@ lgd <- Legend(
 # Define the legend for black borders
 border_legend <- Legend(
     labels = c(expression("FDR <= 0.05")),
-    title = "FC significance",
+    title = "log2FC significance",
     type = "lines",
     legend_gp = gpar(col = "black", fill = NA, lwd = 2),
     nrow = 1, by_row = TRUE, labels_gp = gpar(fontsize = 8)
@@ -378,14 +378,18 @@ dc_fc_filtered <- all_fc %>%
         pathway == "BIOCARTA_DC_PATHWAY"
     )
 
-pathway_dc <- heatmap_gene(dc_gene_filtered, value_size = 5, gene_size = 6, height = 1000, width = 300)
-fc_dc <- heatmap_FC(dc_fc_filtered, dc_gene_filtered, value_size = 6, gene_size = 6,
-                   height = 1000, width = 300)
+pathway_dc <- heatmap_gene(dc_gene_filtered, value_size = 12, gene_size = 18, height = 1000, width = 300)
+fc_dc <- heatmap_FC(dc_fc_filtered, dc_gene_filtered, value_size = 12, gene_size = 18,
+                    height = 1000, width = 300)
+
+png("genecontribution_DC_round2.png", width = 928, height = 730, units = "px")
 draw(pathway_dc+fc_dc, 
-     show_heatmap_legend = FALSE, 
-     show_annotation_legend = FALSE,
+     show_heatmap_legend = TRUE, 
+     show_annotation_legend = TRUE,
      #annotation_legend_list = list(lgd, border_legend), 
-     column_title = "Dendritic cells in Th1/Th2 Development [BIOCARTA]")
+     column_title = "Dendritic cells in Th1/Th2 Development [BIOCARTA]",
+     column_title_gp = gpar(fontsize = 30))
+dev.off()
 
 # JAK-STAT SIGNALING PATHWAY
 jak_gene_filtered <- all_genes %>%
@@ -398,15 +402,20 @@ jak_fc_filtered <- all_fc %>%
     )
 
 selected_jak <- select_top_genes(jak_gene_filtered, top = 5)
-pathway_jak <- heatmap_gene(selected_jak, value_size = 5, gene_size = 6,
-                           height = 1000, width = 300)
-fc_jak <- heatmap_FC(jak_fc_filtered, selected_jak, value_size = 5, gene_size = 6,
-                    height = 1000, width = 300)
+pathway_jak <- heatmap_gene(selected_jak, value_size = 10, gene_size = 18,
+                            height = 1000, width = 300)
+fc_jak <- heatmap_FC(jak_fc_filtered, selected_jak, value_size = 12, gene_size = 18,
+                     height = 1000, width = 300)
+
+png("genecontribution_JAK_round2.png", width = 928, height = 730, units = "px")
 draw(pathway_jak+fc_jak, 
      show_heatmap_legend = FALSE, 
      show_annotation_legend = FALSE,
      #annotation_legend_list = list(lgd, border_legend), 
-     column_title = "JAK-STAT signaling pathway [KEGG]")
+     column_title = "JAK-STAT signaling pathway [KEGG]",
+     column_title_gp = gpar(fontsize = 30)
+     )
+dev.off()
 
 # Cytokine-Cytokine receptor interaction
 cytokine_gene_filtered <- all_genes %>%
@@ -419,15 +428,19 @@ cytokine_fc_filtered <- all_fc %>%
     )
 
 selected_cytokine <- select_top_genes(cytokine_gene_filtered, top = 5)
-pathway_cytokine <- heatmap_gene(selected_cytokine, value_size = 5, gene_size = 6,
-                            height = 1000, width = 300)
-fc_cytokine <- heatmap_FC(cytokine_fc_filtered, selected_cytokine, value_size = 5, gene_size = 6,
-                     height = 1000, width = 300)
+pathway_cytokine <- heatmap_gene(selected_cytokine, value_size = 10, gene_size = 18,
+                                 height = 1000, width = 300)
+fc_cytokine <- heatmap_FC(cytokine_fc_filtered, selected_cytokine, value_size = 12, gene_size = 18,
+                          height = 1000, width = 300)
+
+png("genecontribution_cytokine_round2.png", width = 928, height = 730, units = "px")
 draw(pathway_cytokine+fc_cytokine, 
      show_heatmap_legend = FALSE, 
      show_annotation_legend = FALSE,
      #annotation_legend_list = list(lgd, border_legend), 
-     column_title = "Cytokine-Cytokine receptor interaction [KEGG]")
+     column_title = "Cytokine-Cytokine receptor interaction [KEGG]",
+     column_title_gp = gpar(fontsize = 30))
+dev.off()
 
 # Chemokine receptor interaction
 chemokine_gene_filtered <- all_genes %>%
@@ -440,12 +453,176 @@ chemokine_fc_filtered <- all_fc %>%
     )
 
 selected_chemokine <- select_top_genes(chemokine_gene_filtered, top = 5)
-pathway_chemokine <- heatmap_gene(selected_chemokine, value_size = 5, gene_size = 6,
-                                 height = 1000, width = 300)
-fc_chemokine <- heatmap_FC(chemokine_fc_filtered, selected_chemokine, value_size = 5, gene_size = 6,
-                            height = 1000, width = 300)
+pathway_chemokine <- heatmap_gene(selected_chemokine, value_size = 9.5, gene_size = 18,
+                                  height = 1000, width = 300)
+fc_chemokine <- heatmap_FC(chemokine_fc_filtered, selected_chemokine, value_size = 12, gene_size = 18,
+                           height = 1000, width = 300)
+
+png("genecontribution_chemokine_round2.png", width = 928, height = 730, units = "px")
 draw(pathway_chemokine+fc_chemokine, 
      show_heatmap_legend = FALSE, 
      show_annotation_legend = FALSE,
      annotation_legend_list = list(lgd, border_legend), 
-     column_title = "Chemokine receptors bind chemokines [REACTOME]")
+     column_title = "Chemokine receptors bind chemokines [REACTOME]",
+     column_title_gp = gpar(fontsize = 30))
+dev.off()
+
+#####################################################
+# Supplementary material gene contribution heatmaps #
+#####################################################
+
+dc_gene_filtered <- all_genes %>%
+    filter(
+        pathway == "BIOCARTA_DC_PATHWAY"
+    )
+dc_fc_filtered <- all_fc %>%
+    filter(
+        pathway == "BIOCARTA_DC_PATHWAY"
+    )
+
+pathway_dc <- heatmap_gene(dc_gene_filtered, value_size = 10, gene_size = 18, height = 1000, width = 300)
+fc_dc <- heatmap_FC(dc_fc_filtered, dc_gene_filtered, value_size = 10, gene_size = 18,
+                    height = 1000, width = 300)
+
+png("genecontribution_DC_Supplemental.png", width = 928, height = 730, units = "px")
+draw(pathway_dc+fc_dc, 
+     show_heatmap_legend = TRUE, 
+     show_annotation_legend = TRUE,
+     #annotation_legend_list = list(lgd, border_legend), 
+     column_title = "Dendritic cells in Th1/Th2 Development [BIOCARTA]",
+     column_title_gp = gpar(fontsize = 30))
+dev.off()
+
+# JAK-STAT SIGNALING PATHWAY
+jak_gene_filtered <- all_genes %>%
+    filter(
+        pathway == "KEGG_JAK_STAT_SIGNALING_PATHWAY"
+    )
+jak_fc_filtered <- all_fc %>%
+    filter(
+        pathway == "KEGG_JAK_STAT_SIGNALING_PATHWAY"
+    )
+
+selected_jak <- select_top_genes(jak_gene_filtered, top = 20)
+pathway_jak <- heatmap_gene(selected_jak, value_size = 8, gene_size = 10,
+                            height = 1000, width = 300)
+fc_jak <- heatmap_FC(jak_fc_filtered, selected_jak, value_size = 9, gene_size = 10,
+                     height = 1000, width = 300)
+
+png("genecontribution_JAK_Supplemental.png", width = 928, height = 730, units = "px")
+draw(pathway_jak+fc_jak, 
+     show_heatmap_legend = TRUE, 
+     show_annotation_legend = TRUE,
+     #annotation_legend_list = list(lgd, border_legend), 
+     column_title = "JAK-STAT signaling pathway [KEGG]",
+     column_title_gp = gpar(fontsize = 30)
+)
+dev.off()
+
+# Cytokine-Cytokine receptor interaction
+cytokine_gene_filtered <- all_genes %>%
+    filter(
+        pathway == "KEGG_CYTOKINE_CYTOKINE_RECEPTOR_INTERACTION"
+    )
+cytokine_fc_filtered <- all_fc %>%
+    filter(
+        pathway == "KEGG_CYTOKINE_CYTOKINE_RECEPTOR_INTERACTION"
+    )
+
+selected_cytokine <- select_top_genes(cytokine_gene_filtered, top = 20)
+pathway_cytokine <- heatmap_gene(selected_cytokine, value_size = 8, gene_size = 10,
+                                 height = 1000, width = 300)
+fc_cytokine <- heatmap_FC(cytokine_fc_filtered, selected_cytokine, value_size = 9, gene_size = 10,
+                          height = 1000, width = 300)
+
+png("genecontribution_cytokine_Supplemental.png", width = 928, height = 730, units = "px")
+draw(pathway_cytokine+fc_cytokine, 
+     show_heatmap_legend = TRUE, 
+     show_annotation_legend = TRUE,
+     #annotation_legend_list = list(lgd, border_legend), 
+     column_title = "Cytokine-Cytokine receptor interaction [KEGG]",
+     column_title_gp = gpar(fontsize = 30))
+dev.off()
+
+# Chemokine receptor interaction
+chemokine_gene_filtered <- all_genes %>%
+    filter(
+        pathway == "REACTOME_CHEMOKINE_RECEPTORS_BIND_CHEMOKINES"
+    )
+chemokine_fc_filtered <- all_fc %>%
+    filter(
+        pathway == "REACTOME_CHEMOKINE_RECEPTORS_BIND_CHEMOKINES"
+    )
+
+selected_chemokine <- select_top_genes(chemokine_gene_filtered, top = 20)
+pathway_chemokine <- heatmap_gene(selected_chemokine, value_size = 7, gene_size = 10,
+                                  height = 1000, width = 300)
+fc_chemokine <- heatmap_FC(chemokine_fc_filtered, selected_chemokine, value_size = 8, gene_size = 10,
+                           height = 1000, width = 300)
+
+png("genecontribution_chemokine_Supplemental.png", width = 928, height = 730, units = "px")
+draw(pathway_chemokine+fc_chemokine, 
+     show_heatmap_legend = TRUE, 
+     show_annotation_legend = TRUE,
+     annotation_legend_list = list(lgd, border_legend), 
+     column_title = "Chemokine receptors bind chemokines [REACTOME]",
+     column_title_gp = gpar(fontsize = 30))
+dev.off()
+
+####################################################################
+# Superpathway recapitulation for all superpathways (Supplemental) #
+####################################################################
+theme_heat <- theme_bw() +
+    theme(axis.text.y = element_text(angle = 0, hjust = 1, size = 15),
+          axis.text.x = element_text(angle = 45, hjust = 1, size = 15))
+
+plot_superpathway <- ggplot(all_superpathway, aes(x = target_organism, y = pathway_name)) +
+    geom_tile(aes(fill = recapitulation), color = "white") +
+    theme_heat + 
+    scale_fill_gradient2(low = "blue", mid = "white", high = "green", midpoint = 0, limits=c(-200,200)) +
+    geom_text(aes(label = paste0(round(recapitulation, 1), "%")), size = 10 ,
+              color = "black") +
+    labs(x = "Disease Model", y = "Pathway name", #title = "Superpathway observed recapitulation",
+         #subtitle = "Atopic Dermatitis disease models",
+         fill = latex2exp::TeX("$\\widehat{\\Omega} f$"), tag = "A") +
+    theme(plot.title = element_text(face = "bold")) +
+    theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
+    theme(plot.caption = element_text(color = "grey68"))
+
+
+png("AD_Superpathway_Supplemental.png", width = 910, height = 1078, units = "px")
+plot_superpathway
+dev.off()
+
+#################################################################
+# Cell type recapitulation for all superpathways (Supplemental) #
+#################################################################
+theme_heat <- theme_bw() +
+    theme(axis.line = element_blank(),
+          axis.ticks = element_blank(),
+          strip.text = element_text(size=12),
+          axis.text.x = element_text(angle = -65, hjust = 0, size = 12),
+          axis.text.y = element_text(size = 12))
+# Default 40 character target width.
+swr = function(string, nwrap=40) {
+    paste(strwrap(string, width=nwrap), collapse="\n")
+}
+swr = Vectorize(swr)
+# Create line breaks in Pathway name
+all_celltypes$pathway_name = swr(all_celltypes$pathway_name)
+# Plot for each pathway, cell type and disease model
+plot_celltype <- ggplot(all_celltypes, aes(x = target_organism, y = celltype)) +
+    geom_tile(aes(fill = recapitulation), color = "white") +
+    facet_wrap(~pathway_name, scales = "free") + theme_heat +
+    scale_fill_gradient2(low = "blue", mid = "white", high = "green",  midpoint = 0, limits=c(-200, 200)) + 
+    geom_text(aes(label = paste0(round(recapitulation, 1), "%")), color = "black", size = 5) +
+    labs(x = "Disease model", y= "Cell type", fill = latex2exp::TeX("$\\widehat{\\Gamma} f^b$")) +
+    theme(plot.title = element_text(face = "bold")) +
+    theme(plot.subtitle = element_text(face = "bold", color = "grey35")) +
+    theme(plot.caption = element_text(color = "grey68"))
+
+png("AD_celltypeRecap_Supplemental.png", width = 1899, height = 1096, units = "px")
+plot_celltype
+dev.off()
+
+plot_celltype
