@@ -1,1 +1,529 @@
+## -------------------------------------------------------------------
+## CASE 1: AGREEMENT
+## -------------------------------------------------------------------
 
+## -------------------------------------------------------------------
+## 0. Libraries 
+## -------------------------------------------------------------------
+library(singIST)
+library(ggVennDiagram)
+library(patchwork)
+library(grid)
+library(ComplexHeatmap)
+library(circlize)
+
+set.seed(123)
+
+## 1. Human: all genes DE with log2FC = 1
+sim_human <- simulate_pseudobulk(
+    p           = 300,
+    effect_size = 10000 * 2^1,   # log2FC ≈ 1
+    cor         = TRUE
+)
+
+colnames(sim_human$blocks) <- superpathway@gene_sets_celltype[[1]]
+sim_human$genes <- superpathway@gene_sets_celltype[[1]]
+
+human_input <- make_input(sim_human$blocks, sim_human$labels)
+opt_human   <- fitOptimal(human_input)
+
+genes   <- sim_human$genes
+p       <- length(genes)
+S_H     <- genes           # all genes are DE in human
+
+## 2. Define π_l1 = 0.5, π_l2 = 1 over ALL genes
+pi_l1 <- 0.5
+pi_l2 <- 1.0
+
+set.seed(123)
+S_l1 <- sample(genes, size = round(pi_l1 * p))  # 50% of all genes DE in l1
+S_l2 <- genes                                  # 100% DE in l2
+
+## 3. Build FC_list for l1 and l2 using simulate_FC_list, then overwrite
+make_FC_list_from_sets <- function(cell_types, genes, S_l,
+                                   log2fc_DE = 1, log2fc_nonDE = 0) {
+    # start from structure of simulate_FC_list
+    FC_list <- simulate_FC_list(
+        cell_types  = cell_types,
+        genes       = genes,
+        fc_min      = log2fc_nonDE,
+        fc_max      = log2fc_nonDE,
+        prop_signif = 0    # initially no gene is significant
+    )
+    
+    for (ct in cell_types) {
+        df    <- FC_list[[ct]]
+        is_DE <- rownames(df) %in% S_l
+        
+        df$avg_log2FC[is_DE]  <- log2fc_DE
+        df$avg_log2FC[!is_DE] <- log2fc_nonDE
+        
+        df$p_val_adj[is_DE]   <- runif(sum(is_DE), 0, 0.05)
+        df$p_val_adj[!is_DE]  <- runif(sum(!is_DE), 0.05, 1)
+        
+        df$p_val[is_DE]       <- df$p_val_adj[is_DE]
+        df$p_val[!is_DE]      <- df$p_val_adj[!is_DE]
+        
+        FC_list[[ct]] <- df
+    }
+    
+    FC_list
+}
+
+cell_types <- c("Tcell","Bcell","Mono","NK","DC")
+
+FC_l1 <- make_FC_list_from_sets(cell_types, genes, S_l1)
+FC_l2 <- make_FC_list_from_sets(cell_types, genes, S_l2)
+
+## -------------------------------------------------------------------
+## 3. ODEG overlap + Venn diagram
+## -------------------------------------------------------------------
+# Human DEGs:
+S_H_DE  <- S_H
+# Model DEGs:
+S_l1_DE <- S_l1
+S_l2_DE <- S_l2
+
+cat("ODEG overlaps:\n")
+cat("|S_l1 ∩ S_H| =", length(intersect(S_l1_DE, S_H_DE)), "\n")
+cat("|S_l2 ∩ S_H| =", length(intersect(S_l2_DE, S_H_DE)), "\n")
+
+## We already have these from the simulation:
+## S_H     = human DEGs
+## S_l1    = DEGs in model l1 (π = 0.5)
+## S_l2    = DEGs in model l2 (π = 1)
+
+# Panel A: Human vs L1
+p_l1 <- ggVennDiagram(
+    list(Human = S_H, L1 = S_l1),
+    label_alpha = 0
+) +
+    scale_fill_gradient(low = "#ffffff", high = "#9ecae1") +
+    theme_void() +
+    theme(
+        plot.title = element_text(hjust = 0.5, face = "bold")
+    ) +
+    ggtitle("Human vs L1")
+
+# Panel B: Human vs L2
+p_l2 <- ggVennDiagram(
+    list(Human = S_H, L2 = S_l2),
+    label_alpha = 0
+) +
+    scale_fill_gradient(low = "#ffffff", high = "#fc9272") +
+    theme_void() +
+    theme(
+        plot.title = element_text(hjust = 0.5, face = "bold")
+    ) +
+    ggtitle("Human vs L2")
+
+# Put them side by side, like A / B in your example
+(p_l1 | p_l2) + plot_annotation(tag_levels = "A")
+
+## -------------------------------------------------------------------
+## 4. singIST superpathway recapitulation for l1 and l2
+## -------------------------------------------------------------------
+rec_l1 <- singISTrecapitulations(
+    mapping_organism,
+    opt_human,
+    model_species = "hsapiens",
+    FC_list       = FC_l1
+)
+
+rec_l2 <- singISTrecapitulations(
+    mapping_organism,
+    opt_human,
+    model_species = "hsapiens",
+    FC_list       = FC_l2
+)
+
+rec_vals <- c(
+    `l1 (π = 0.5)` = rec_l1$superpathway$recapitulation,
+    `l2 (π = 1.0)` = rec_l2$superpathway$recapitulation
+)
+
+print(rec_vals)
+
+## -------------------------------------------------------------------
+## 5. Heatmap: row = superpathway, columns = l1 and l2
+## -------------------------------------------------------------------
+mat <- matrix(rec_vals, nrow = 1)
+colnames(mat) <- names(rec_vals)
+rownames(mat) <- "Simulated superpathway"
+
+col_fun <- colorRamp2(c(-100, 0, 100), c("blue", "white", "red"))
+
+ht <- Heatmap(
+    mat,
+    name            = "Recapitulation (%)",
+    col             = col_fun,
+    cluster_rows    = FALSE,
+    cluster_columns = FALSE,
+    column_title    = "Disease models",
+    row_title       = "Superpathway",
+    cell_fun = function(j, i, x, y, width, height, fill) {
+        grid.text(
+            sprintf("%.0f", mat[i, j]),      # 0 decimals
+            x = x, y = y,
+            gp = gpar(col = "black", fontsize = 15)
+        )
+    }
+)
+
+# Draw heatmap and add tag
+draw(ht, newpage = TRUE)
+
+# Add panel tag "A" in top-left
+grid.text(
+    "B",
+    x = unit(0.02, "npc"),
+    y = unit(0.98, "npc"),
+    gp = gpar(fontsize = 14, fontface = "bold"),
+    just = c("left", "top")
+)
+
+
+## -------------------------------------------------------------------
+## CASE 2: DISAGREEMENT DIRECTION
+## -------------------------------------------------------------------
+
+
+## -------------------------------------------------------------------
+## 1. Human: all genes DE with log2FC = +1 (same as in 2.A)
+## -------------------------------------------------------------------
+sim_human <- simulate_pseudobulk(
+    p           = 300,
+    effect_size = 10000 * 2^1,   # log2FC ≈ 1
+    cor         = TRUE
+)
+
+colnames(sim_human$blocks) <- superpathway@gene_sets_celltype[[1]]
+sim_human$genes <- superpathway@gene_sets_celltype[[1]]
+
+human_input <- make_input(sim_human$blocks, sim_human$labels)
+opt_human   <- fitOptimal(human_input)
+
+genes <- sim_human$genes
+p     <- length(genes)
+S_H   <- genes           # all genes are DE in human (log2FC = +1)
+
+## -------------------------------------------------------------------
+## 2. Define π_l1 = 0.5, π_l2 = 1.0 over ALL genes
+## -------------------------------------------------------------------
+pi_l1 <- 0.5
+pi_l2 <- 1.0
+
+set.seed(123)
+S_l1 <- sample(genes, size = round(pi_l1 * p))  # 50% of all genes DE in ℓ1
+S_l2 <- genes                                  # 100% DE in ℓ2
+
+## -------------------------------------------------------------------
+## 3. Build FC_list for l1 and l2 with log2FC = -1 in DEGs
+## -------------------------------------------------------------------
+make_FC_list_from_sets <- function(cell_types, genes, S_l,
+                                   log2fc_DE = -1, log2fc_nonDE = 0) {
+    # start from structure of simulate_FC_list
+    FC_list <- simulate_FC_list(
+        cell_types  = cell_types,
+        genes       = genes,
+        fc_min      = log2fc_nonDE,
+        fc_max      = log2fc_nonDE,
+        prop_signif = 0    # initially no gene is significant
+    )
+    
+    for (ct in cell_types) {
+        df    <- FC_list[[ct]]
+        is_DE <- rownames(df) %in% S_l
+        
+        # disease models: DE genes have log2FC = -1, non-DE = 0
+        df$avg_log2FC[is_DE]  <- log2fc_DE
+        df$avg_log2FC[!is_DE] <- log2fc_nonDE
+        
+        df$p_val_adj[is_DE]   <- runif(sum(is_DE), 0, 0.05)
+        df$p_val_adj[!is_DE]  <- runif(sum(!is_DE), 0.05, 1)
+        
+        df$p_val[is_DE]       <- df$p_val_adj[is_DE]
+        df$p_val[!is_DE]      <- df$p_val_adj[!is_DE]
+        
+        FC_list[[ct]] <- df
+    }
+    
+    FC_list
+}
+
+cell_types <- c("Tcell","Bcell","Mono","NK","DC")
+
+FC_l1 <- make_FC_list_from_sets(cell_types, genes, S_l1)
+FC_l2 <- make_FC_list_from_sets(cell_types, genes, S_l2)
+
+## -------------------------------------------------------------------
+## 4. ODEG overlap + Venn diagram (sign is ignored; same as before)
+## -------------------------------------------------------------------
+S_H_DE  <- S_H
+S_l1_DE <- S_l1
+S_l2_DE <- S_l2
+
+cat("ODEG overlaps (log2FC sign ignored):\n")
+cat("|S_l1 ∩ S_H| =", length(intersect(S_l1_DE, S_H_DE)), "\n")
+cat("|S_l2 ∩ S_H| =", length(intersect(S_l2_DE, S_H_DE)), "\n")
+
+# Panel A: Human vs L1
+p_l1 <- ggVennDiagram(
+    list(Human = S_H, L1 = S_l1),
+    label_alpha = 0
+) +
+    scale_fill_gradient(low = "#ffffff", high = "#9ecae1") +
+    theme_void() +
+    theme(
+        plot.title = element_text(hjust = 0.5, face = "bold")
+    ) +
+    ggtitle("Human vs L1")
+
+# Panel B: Human vs L2
+p_l2 <- ggVennDiagram(
+    list(Human = S_H, L2 = S_l2),
+    label_alpha = 0
+) +
+    scale_fill_gradient(low = "#ffffff", high = "#fc9272") +
+    theme_void() +
+    theme(
+        plot.title = element_text(hjust = 0.5, face = "bold")
+    ) +
+    ggtitle("Human vs L2")
+
+# Combine with tags (adjust tag_levels if needed)
+(p_l1 | p_l2) + plot_annotation(tag_levels = "A")
+
+## -------------------------------------------------------------------
+## 5. singIST superpathway recapitulation for l1 and l2 (log2FC = -1)
+## -------------------------------------------------------------------
+rec_l1 <- singISTrecapitulations(
+    mapping_organism,
+    opt_human,
+    model_species = "hsapiens",
+    FC_list       = FC_l1
+)
+
+rec_l2 <- singISTrecapitulations(
+    mapping_organism,
+    opt_human,
+    model_species = "hsapiens",
+    FC_list       = FC_l2
+)
+
+rec_vals <- c(
+    `l1 (π = 0.5)` = rec_l1$superpathway$recapitulation,
+    `l2 (π = 1.0)` = rec_l2$superpathway$recapitulation
+)
+
+print(rec_vals)
+
+## -------------------------------------------------------------------
+## 6. Heatmap: row = superpathway, columns = l1 and l2
+## -------------------------------------------------------------------
+mat <- matrix(rec_vals, nrow = 1)
+colnames(mat) <- names(rec_vals)
+rownames(mat) <- "Simulated superpathway"
+
+col_fun <- colorRamp2(c(-100, 0, 100), c("blue", "white", "red"))
+
+ht <- Heatmap(
+    mat,
+    name            = "Recapitulation (%)",
+    col             = col_fun,
+    cluster_rows    = FALSE,
+    cluster_columns = FALSE,
+    column_title    = "Disease models",
+    row_title       = "Superpathway",
+    cell_fun = function(j, i, x, y, width, height, fill) {
+        grid.text(
+            sprintf("%.0f", mat[i, j]),      # 0 decimals
+            x = x, y = y,
+            gp = gpar(col = "black", fontsize = 15)
+        )
+    }
+)
+
+draw(ht, newpage = TRUE)
+
+grid.text(
+    "B",
+    x = unit(0.02, "npc"),
+    y = unit(0.98, "npc"),
+    gp = gpar(fontsize = 14, fontface = "bold"),
+    just = c("left", "top")
+)
+
+
+## -------------------------------------------------------------------
+## CASE 3: DISAGREEMENT MAGNITUDE
+## -------------------------------------------------------------------
+## -------------------------------------------------------------------
+## 1. Human: all genes DE with log2FC = +1 (same as in 2.A)
+## -------------------------------------------------------------------
+sim_human <- simulate_pseudobulk(
+    p           = 300,
+    effect_size = 10000 * 2^1,   # log2FC ≈ 1
+    cor         = TRUE
+)
+
+colnames(sim_human$blocks) <- superpathway@gene_sets_celltype[[1]]
+sim_human$genes <- superpathway@gene_sets_celltype[[1]]
+
+human_input <- make_input(sim_human$blocks, sim_human$labels)
+opt_human   <- fitOptimal(human_input)
+
+genes <- sim_human$genes
+p     <- length(genes)
+S_H   <- genes           # all genes are DE in human (log2FC = +1)
+
+## -------------------------------------------------------------------
+## 2. Define π_L1 = 0.5, π_L2 = 0.7 over ALL genes
+## -------------------------------------------------------------------
+pi_L1 <- 0.5
+pi_L2 <- 0.7
+
+set.seed(123)
+S_L1 <- sample(genes, size = round(pi_L1 * p))  # 50% of all genes DE in L1
+S_L2 <- sample(genes, size = round(pi_L2 * p))  # 70% of all genes DE in L2
+
+## -------------------------------------------------------------------
+## 3. Build FC_list for L1 and L2 with different magnitudes
+## -------------------------------------------------------------------
+# This is exactly the helper you had before, just used with different log2FC
+make_FC_list_from_sets <- function(cell_types, genes, S_l,
+                                   log2fc_DE = 1, log2fc_nonDE = 0) {
+    # start from structure of simulate_FC_list
+    FC_list <- simulate_FC_list(
+        cell_types  = cell_types,
+        genes       = genes,
+        fc_min      = log2fc_nonDE,
+        fc_max      = log2fc_nonDE,
+        prop_signif = 0    # initially no gene is significant
+    )
+    
+    for (ct in cell_types) {
+        df    <- FC_list[[ct]]
+        is_DE <- rownames(df) %in% S_l
+        
+        # DE genes have log2FC = log2fc_DE, non-DE = log2fc_nonDE
+        df$avg_log2FC[is_DE]  <- log2fc_DE
+        df$avg_log2FC[!is_DE] <- log2fc_nonDE
+        
+        df$p_val_adj[is_DE]   <- runif(sum(is_DE), 0, 0.05)
+        df$p_val_adj[!is_DE]  <- runif(sum(!is_DE), 0.05, 1)
+        
+        df$p_val[is_DE]       <- df$p_val_adj[is_DE]
+        df$p_val[!is_DE]      <- df$p_val_adj[!is_DE]
+        
+        FC_list[[ct]] <- df
+    }
+    
+    FC_list
+}
+
+cell_types <- c("Tcell","Bcell","Mono","NK","DC")
+
+# L1: π=0.5, DE genes with log2FC = 1
+FC_L1 <- make_FC_list_from_sets(cell_types, genes, S_L1, log2fc_DE = 1)
+
+# L2: π=0.7, DE genes with log2FC = 0.1
+FC_L2 <- make_FC_list_from_sets(cell_types, genes, S_L2, log2fc_DE = 0.1)
+
+## -------------------------------------------------------------------
+## 4. ODEG overlap + Venn diagram (sign/magnitude ignored)
+## -------------------------------------------------------------------
+S_H_DE  <- S_H
+S_L1_DE <- S_L1
+S_L2_DE <- S_L2
+
+cat("ODEG overlaps (ignoring magnitude):\n")
+cat("|S_L1 ∩ S_H| =", length(intersect(S_L1_DE, S_H_DE)), "\n")
+cat("|S_L2 ∩ S_H| =", length(intersect(S_L2_DE, S_H_DE)), "\n")
+# Here ODEGs will say L2 is "better" (higher overlap), because π_L2 > π_L1.
+
+# Panel A: Human vs L1
+p_L1 <- ggVennDiagram(
+    list(Human = S_H, L1 = S_L1),
+    label_alpha = 0
+) +
+    scale_fill_gradient(low = "#ffffff", high = "#9ecae1") +
+    theme_void() +
+    theme(
+        plot.title = element_text(hjust = 0.5, face = "bold")
+    ) +
+    ggtitle("Human vs L1")
+
+# Panel B: Human vs L2
+p_L2 <- ggVennDiagram(
+    list(Human = S_H, L2 = S_L2),
+    label_alpha = 0
+) +
+    scale_fill_gradient(low = "#ffffff", high = "#fc9272") +
+    theme_void() +
+    theme(
+        plot.title = element_text(hjust = 0.5, face = "bold")
+    ) +
+    ggtitle("Human vs L2")
+
+(p_L1 | p_L2) + plot_annotation(tag_levels = "A")
+
+## -------------------------------------------------------------------
+## 5. singIST superpathway recapitulation for L1 and L2
+## -------------------------------------------------------------------
+rec_L1 <- singISTrecapitulations(
+    mapping_organism,
+    opt_human,
+    model_species = "hsapiens",
+    FC_list       = FC_L1
+)
+
+rec_L2 <- singISTrecapitulations(
+    mapping_organism,
+    opt_human,
+    model_species = "hsapiens",
+    FC_list       = FC_L2
+)
+
+rec_vals <- c(
+    `L1 (π = 0.5, log2FC = 1)`   = rec_L1$superpathway$recapitulation,
+    `L2 (π = 0.7, log2FC = 0.1)` = rec_L2$superpathway$recapitulation
+)
+
+print(rec_vals)
+
+## -------------------------------------------------------------------
+## 6. Heatmap: row = superpathway, columns = L1 and L2
+## -------------------------------------------------------------------
+mat <- matrix(rec_vals, nrow = 1)
+colnames(mat) <- names(rec_vals)
+rownames(mat) <- "Simulated superpathway"
+
+col_fun <- colorRamp2(c(-100, 0, 100), c("blue", "white", "red"))
+
+ht <- Heatmap(
+    mat,
+    name            = "Recapitulation (%)",
+    col             = col_fun,
+    cluster_rows    = FALSE,
+    cluster_columns = FALSE,
+    column_title    = "Disease models",
+    row_title       = "Superpathway",
+    cell_fun = function(j, i, x, y, width, height, fill) {
+        grid.text(
+            sprintf("%.0f", mat[i, j]),      # 0 decimals
+            x = x, y = y,
+            gp = gpar(col = "black", fontsize = 15)
+        )
+    }
+)
+
+draw(ht, newpage = TRUE)
+
+grid.text(
+    "C",  # or whatever panel tag you want
+    x = unit(0.02, "npc"),
+    y = unit(0.98, "npc"),
+    gp = gpar(fontsize = 14, fontface = "bold"),
+    just = c("left", "top")
+)
