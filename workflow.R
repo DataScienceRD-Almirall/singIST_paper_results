@@ -4,6 +4,7 @@
 # 2. Install singIST package from git repo
 remotes::install_git(
     "https://github.com/DataScienceRD-Almirall/singIST.git",
+    tag = "v0.99.62",
     git = "external"
 )
 library(singIST)
